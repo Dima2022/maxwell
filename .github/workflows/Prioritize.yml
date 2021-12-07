@@ -3,45 +3,53 @@ name: Whitesource Prioritize Java with Maven
 
 on: workflow_dispatch
 
+executors:
+  jdk11:
+    docker:
+
+
 jobs:
   build:
-
-    runs-on: ubuntu-latest
-
+    docker:
+      - image: cimg/openjdk:11.0
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up JDK
-      uses: actions/setup-java@v2
-      with:
-        java-version: '11'
-        distribution: 'adopt'
-    - name: Cache local Maven repository
-      uses: actions/cache@v2
-      with:
-        path: ~/.m2/repository
-        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-maven-
-    - name: Build with Maven
-      run: mvn clean install -DskipTests=true
-    - name: WhiteSource Unified Agent Scan
-      env:
-        GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-        WS_APIKEY: ${{secrets.APIKEY}}
-        WS_USERKEY: ${{secrets.USERKEY}}
-        WS_WSS_URL: https://app.whitesourcesoftware.com/agent
-        WS_PRODUCTNAME: GH_${{github.event.repository.name}}
-        WS_PROJECTNAME: ${{github.ref}}_Prioritize
-        WS_ENABLEIMPACTANALYSIS: true
-        WS_REQUIREKNOWNSHA1: false
-        WS_RESOLVEALLDEPENDENCIES: false
-        WS_MAVEN_RESOLVEDEPENDENCIES: true
-        WS_MAVEN_AGGREGATEMODULES: true
-        WS_FILESYSTEMSCAN: false
-        WS_GENERATEPROJECTDETAILSJSON: true
-      run: |
-        curl -LJO https://unified-agent.s3.amazonaws.com/wss-unified-agent.jar
-        echo Unified Agent downloaded successfully
-        WARFILE=$(find ./ -type f -wholename "*/target/*.jar")
-        echo $WARFILE will be added to appPath
-        java -jar wss-unified-agent.jar -appPath $WARFILE -d ./
+      - checkout
+      - restore_cache:
+          key: dependency-cache-{{ checksum "pom.xml" }}
+      - run:
+          name: Cache m2 artifacts
+          command: mvn dependency:go-offline
+      - save_cache:
+          key: dependency-cache-{{ checksum "pom.xml" }}
+          paths: [ "~/.m2" ]
+          
+      - name: Cache local Maven repository
+        uses: actions/cache@v2
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Build with Maven
+        run: mvn clean install -DskipTests=true
+      - name: WhiteSource Unified Agent Scan
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          WS_APIKEY: ${{secrets.APIKEY}}
+          WS_USERKEY: ${{secrets.USERKEY}}
+          WS_WSS_URL: https://app.whitesourcesoftware.com/agent
+          WS_PRODUCTNAME: GH_${{github.event.repository.name}}
+          WS_PROJECTNAME: ${{github.ref}}_Prioritize
+          WS_ENABLEIMPACTANALYSIS: true
+          WS_REQUIREKNOWNSHA1: false
+          WS_RESOLVEALLDEPENDENCIES: false
+          WS_MAVEN_RESOLVEDEPENDENCIES: true
+          WS_MAVEN_AGGREGATEMODULES: true
+          WS_FILESYSTEMSCAN: false
+          WS_GENERATEPROJECTDETAILSJSON: true
+        run: |
+          curl -LJO https://unified-agent.s3.amazonaws.com/wss-unified-agent.jar
+          echo Unified Agent downloaded successfully
+          WARFILE=$(find ./ -type f -wholename "*/target/*.jar")
+          echo $WARFILE will be added to appPath
+          java -jar wss-unified-agent.jar -appPath $WARFILE -d ./
